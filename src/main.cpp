@@ -132,6 +132,7 @@ void mqttInit() {
   device.setSoftwareVersion("0.0.1");
   device.setModel("ESP Louder");
   device.enableSharedAvailability();
+  device.enableLastWill();
 
   sensor.setCurrentState(false);
   sensor.setName("Door bell");
@@ -145,7 +146,7 @@ void mqttInit() {
 
   loudness.setMin(0);
   loudness.setMax(100);
-  loudness.setCurrentState(100);
+  loudness.setCurrentState(70);
   loudness.setUnitOfMeasurement("%");
   loudness.setStep(10);
   loudness.setMode(HANumber::Mode::ModeSlider);
@@ -167,6 +168,7 @@ void audioInit() {
   Tas5805m.begin();
   wav = new AudioGeneratorWAV();
   file = new AudioFileSourceSPIFFS("/bell.wav");
+  out->SetGain(0.7);
 }
 
 void setup() {
