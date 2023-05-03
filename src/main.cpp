@@ -26,6 +26,8 @@ HAButton button("ring");
 HANumber loudness("loudness");
 
 bool buttonPressed = false;
+int last19 = 0;
+int last23 = 0;
 
 void audioLoop() {
   if (wav->isRunning()) {
@@ -87,7 +89,7 @@ void otaInit() {
 
 void wifiInit() {
   WiFi.mode(WIFI_STA);
-  WiFi.setHostname("doorbell");
+  WiFi.setHostname("doorbell-beta");
   WiFi.disconnect();
   delay(100);
   wifiLoop();
@@ -105,11 +107,27 @@ void onLoudnessChange(HANumeric number, HANumber *sender) {
   out->SetGain(float(number.toInt8()) / 100.0);
 };
 
-void buttonInit() { pinMode(4, INPUT_PULLUP); }
+void buttonInit() {
+  pinMode(19, INPUT_PULLUP);
+  pinMode(23, INPUT_PULLUP);
+}
 void buttonLoop() {
-  int state = digitalRead(4);
+  int stateA = digitalRead(19);
+  int stateB = digitalRead(23);
+
+  if (stateA != last19) {
+    TelnetStream.println("19 toggled");
+  }
+
+  if (stateB != last23) {
+    TelnetStream.println("23 toggled");
+  }
+
+  last19 = stateA;
+  last23 = stateB;
+
   bool lastButtonState = buttonPressed;
-  if (state == 0) {
+  if (stateA == 0 && stateB == 1) {
     buttonPressed = true;
     sensor.setState(true);
   } else {
@@ -119,7 +137,7 @@ void buttonLoop() {
 
   if (lastButtonState == false && buttonPressed == true) {
     TelnetStream.println("Button pressed!");
-    audioPlay();
+    // audioPlay();
   }
 };
 
@@ -128,7 +146,7 @@ void mqttInit() {
   esp_read_mac(baseMac, ESP_MAC_WIFI_STA);
   device.setUniqueId(baseMac, sizeof(baseMac));
   device.setManufacturer("ChrisOboe");
-  device.setName("Doorbell");
+  device.setName("Doorbell-Beta");
   device.setSoftwareVersion("0.0.1");
   device.setModel("ESP Louder");
   device.enableSharedAvailability();
@@ -172,10 +190,12 @@ void audioInit() {
 }
 
 void setup() {
+  Serial.begin(SERIAL_BAUD);
+  Serial.println("Joho");
   wifiInit();
+  Serial.println("Wifi Done!");
   TelnetStream.begin();
 
-  // Serial.begin(SERIAL_BAUD);
   TelnetStream.println(F("Starting up...\n"));
 
   if (!SPIFFS.begin()) {
@@ -185,19 +205,19 @@ void setup() {
   } else
     TelnetStream.println(F("SPIFFS mounted"));
 
-  Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
+  // Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
 
-  audioInit();
+  // audioInit();
   buttonInit();
 
   mqttInit();
-  otaInit();
+  // otaInit();
 }
 
 void loop() {
   wifiLoop();
   mqtt.loop();
-  audioLoop();
+  // audioLoop();
   buttonLoop();
-  ArduinoOTA.handle();
+  // ArduinoOTA.handle();
 }
