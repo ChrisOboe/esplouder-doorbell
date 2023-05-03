@@ -6,11 +6,13 @@
 #include <AudioFileSourceSPIFFS.h>
 #include <AudioGeneratorWAV.h>
 #include <AudioOutputI2S.h>
+#include <RemoteDebug.h>
 #include <SD.h>
-#include <TelnetStream.h>
 #include <WiFi.h>
 #include <Wire.h>
 #include <tas5805m.hpp>
+
+RemoteDebug Debug;
 
 tas5805m Tas5805m(&Wire);
 
@@ -32,23 +34,23 @@ int last23 = 0;
 void audioLoop() {
   if (wav->isRunning()) {
     if (!wav->loop()) {
+      Debug.println("Stopping audio");
       wav->stop();
+      file->close();
     }
   }
 }
 
 void wifiLoop() {
+  Debug.handle();
+  debugHandle();
+
   if (WiFi.status() == WL_CONNECTED) {
     return;
-  }
-
-  WiFi.scanNetworks();
-  WiFi.begin("gob", "pfefferpapageiknotenhaken");
-
-  while (WiFi.waitForConnectResult() != WL_CONNECTED) {
-    TelnetStream.println("Connection Failed! Rebooting...");
-    delay(5000);
-    ESP.restart();
+  } else {
+    Debug.printf("WiFi.status: %i", WiFi.status());
+    WiFi.reconnect();
+    WiFi.waitForConnectResult();
   }
 };
 
@@ -57,31 +59,30 @@ void otaInit() {
   ArduinoOTA
       .onStart([]() {
         String type;
-        if (ArduinoOTA.getCommand() == U_FLASH)
+        if (ArduinoOTA.getCommand() == U_FLASH) {
           type = "sketch";
-        else // U_SPIFFS
+        } else { // U_SPIFFS
           type = "filesystem";
-
-        // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS
-        // using SPIFFS.end()
-        TelnetStream.println("Start updating " + type);
+        }
+        SPIFFS.end();
+        Debug.println("Start updating");
       })
-      .onEnd([]() { TelnetStream.println("\nEnd"); })
+      .onEnd([]() { Debug.println("\nEnd"); })
       .onProgress([](unsigned int progress, unsigned int total) {
-        TelnetStream.printf("Progress: %u%%\r", (progress / (total / 100)));
+        Debug.println("Updating");
       })
       .onError([](ota_error_t error) {
-        TelnetStream.printf("Error[%u]: ", error);
+        Debug.println("OTA Error");
         if (error == OTA_AUTH_ERROR)
-          TelnetStream.println("Auth Failed");
+          Debug.println("Auth Failed");
         else if (error == OTA_BEGIN_ERROR)
-          TelnetStream.println("Begin Failed");
+          Debug.println("Begin Failed");
         else if (error == OTA_CONNECT_ERROR)
-          TelnetStream.println("Connect Failed");
+          Debug.println("Connect Failed");
         else if (error == OTA_RECEIVE_ERROR)
-          TelnetStream.println("Receive Failed");
+          Debug.println("Receive Failed");
         else if (error == OTA_END_ERROR)
-          TelnetStream.println("End Failed");
+          Debug.println("End Failed");
       });
 
   ArduinoOTA.begin();
@@ -89,16 +90,18 @@ void otaInit() {
 
 void wifiInit() {
   WiFi.mode(WIFI_STA);
-  WiFi.setHostname("doorbell-beta");
-  WiFi.disconnect();
-  delay(100);
-  wifiLoop();
+  WiFi.setHostname("doorbell");
+  WiFi.scanNetworks();
+  WiFi.begin("gob", "pfefferpapageiknotenhaken");
+  WiFi.waitForConnectResult();
+  Debug.begin("doorbell");
 }
 
 void audioPlay() {
   if (!file->isOpen()) {
     file->open("/bell.wav");
   }
+  Debug.println("Starting audio");
   wav->begin(file, out);
 }
 
@@ -116,11 +119,11 @@ void buttonLoop() {
   int stateB = digitalRead(23);
 
   if (stateA != last19) {
-    TelnetStream.println("19 toggled");
+    Debug.println("19 toggled");
   }
 
   if (stateB != last23) {
-    TelnetStream.println("23 toggled");
+    Debug.println("23 toggled");
   }
 
   last19 = stateA;
@@ -136,8 +139,7 @@ void buttonLoop() {
   }
 
   if (lastButtonState == false && buttonPressed == true) {
-    TelnetStream.println("Button pressed!");
-    // audioPlay();
+    audioPlay();
   }
 };
 
@@ -177,10 +179,8 @@ void mqttInit() {
 void audioInit() {
   Tas5805m.init();
   out = new AudioOutputI2S();
-  TelnetStream.printf("Setting I2S pins: clk = %d, ws = %d, data = %d\n",
-                      PIN_I2S_SCK, PIN_I2S_FS, PIN_I2S_SD);
   if (!out->SetPinout(PIN_I2S_SCK, PIN_I2S_FS, PIN_I2S_SD)) {
-    TelnetStream.println("Failed to set pinout");
+    Debug.println("Failed to set pinout");
   }
 
   Tas5805m.begin();
@@ -191,33 +191,30 @@ void audioInit() {
 
 void setup() {
   Serial.begin(SERIAL_BAUD);
-  Serial.println("Joho");
+
   wifiInit();
-  Serial.println("Wifi Done!");
-  TelnetStream.begin();
 
-  TelnetStream.println(F("Starting up...\n"));
-
-  if (!SPIFFS.begin()) {
-    TelnetStream.println(F("An Error has occurred while mounting SPIFFS"));
-    while (true) {
-    };
-  } else
-    TelnetStream.println(F("SPIFFS mounted"));
-
-  // Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
-
-  // audioInit();
-  buttonInit();
+  Debug.println("Starting up...");
 
   mqttInit();
-  // otaInit();
+  otaInit();
+
+  if (!SPIFFS.begin()) {
+    Debug.println("An Error has occurred while mounting SPIFFS");
+    while (true) {
+    };
+  }
+
+  Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
+
+  audioInit();
+  buttonInit();
 }
 
 void loop() {
   wifiLoop();
   mqtt.loop();
-  // audioLoop();
+  audioLoop();
   buttonLoop();
-  // ArduinoOTA.handle();
+  ArduinoOTA.handle();
 }
