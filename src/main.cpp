@@ -148,7 +148,7 @@ void mqttInit() {
   esp_read_mac(baseMac, ESP_MAC_WIFI_STA);
   device.setUniqueId(baseMac, sizeof(baseMac));
   device.setManufacturer("ChrisOboe");
-  device.setName("Doorbell-Beta");
+  device.setName("Doorbell");
   device.setSoftwareVersion("0.0.1");
   device.setModel("ESP Louder");
   device.enableSharedAvailability();
@@ -191,24 +191,19 @@ void audioInit() {
 
 void setup() {
   Serial.begin(SERIAL_BAUD);
-
   wifiInit();
-
   Debug.println("Starting up...");
-
-  mqttInit();
-  otaInit();
 
   if (!SPIFFS.begin()) {
     Debug.println("An Error has occurred while mounting SPIFFS");
-    while (true) {
-    };
   }
 
   Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL);
-
   audioInit();
   buttonInit();
+
+  mqttInit();
+  otaInit();
 }
 
 void loop() {
